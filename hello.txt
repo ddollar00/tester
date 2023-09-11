@@ -1,1 +1,7 @@
-hello world
+hello worl
+
+enter i to type text in vim 
+
+esc to stop 
+
+and :wq to save and add information to file
