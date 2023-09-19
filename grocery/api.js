@@ -1,116 +1,100 @@
 // HTTP Methods
-const http = require("http");
-const url = require('url');
-const PORT = 3000;
-const { createLogger, transports, format } = require('winston');
+
+const PORT = 3002;
+const express = require('express');
+const server = express();
+const dao = require('../groceryDao/grocerydao.js');
+const bodyParser = require('body-parser');
+const uuid = require('uuid')
 
 
-// create the logger
-const logger = createLogger({
-    level: 'info', // this will log only messages with the level 'info' and above
-    format: format.combine(
-        format.timestamp(),
-        format.printf(({ timestamp, level, message }) => {
-            return `${timestamp} [${level}]: ${message}`;
+server.use(bodyParser.json());
+
+server.get('/', (req, res) => {
+    const body = req.body;
+
+    dao.getItem(body.grocery_item_id)
+        .then((data) => {
+            console.log(data);
+            res.send(data.Item.name);
         })
-    ),
-    transports: [
-        new transports.Console(), // log to the console
-        new transports.File({ filename: 'info.log', level: 'info' }),
-        new transports.File({ filename: 'error.log', level: 'error' })
-    ]
+        .catch((err) => {
+            res.send({
+                message: "Failed to get Item!"
+            });
+            console.error(err);
+        })
+
+
+
 });
-const groc = [];
-const server = http.createServer((req, res) => {
-
-    // GET
-    if (req.method === 'GET' && req.url === '/api/data') {
-
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-
-        res.end(JSON.stringify(groc));
-        logger.info(" Get " + JSON.stringify(groc));
-
-        //POST
-    } else if (req.method === 'POST' && req.url === '/api/add') {
-
-        let body = '';
-        req.on('data', (chunk) => {
-            body += chunk;
-        });
-        req.on('end', () => {
-
-            const item = JSON.parse(body);
-            groc.push(item);
-            logger.info(" ADD " + JSON.stringify(item));
-            res.writeHead(201, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ message: 'item added Successfully!' }));
-
-        });
-
-    }
-
-    else if (req.method === "PUT" && req.url === '/api/edit') {
-
-        let body = '';
-        req.on('data', (chunk) => {
-            body += chunk;
-        });
-        req.on('end', () => {
-
-            const data = JSON.parse(body);
-            if (Number(data) > groc.length) {
-
-                res.writeHead(404, { 'Content-Type': 'text/plain' });
-                res.end('Not Found');
-                logger.error(" Edit ID not found " + data);
-            } else {
-                groc[Number(data) - 1].bought = !groc[Number(data) - 1].bought;
-
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ message: 'item bought status changed!' }));
-                logger.info(" Edit" + JSON.stringify(groc[Number(data) - 1]));
-            }
-
-        });
-
-        logger.error("Edit index does not exist");
-
-    }
-
-    else if (req.method === "DELETE" && req.url === '/api/remove') {
-
-        let body = '';
-        req.on('data', (chunk) => {
-            body += chunk;
-        });
-        req.on('end', () => {
-
-            const data = JSON.parse(body);
-            if (Number(data) > groc.length) {
-
-                res.writeHead(404, { 'Content-Type': 'text/plain' });
-                res.end('Not Found');
-                logger.error(" DELETE ID not found " + data);
-            } else {
-                groc.splice(Number(data) - 1, 1);
-
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ message: 'item has been deleted!' }));
-                logger.info(" Delete" + JSON.stringify(groc[Number(data) - 1]));
-            }
-
-        });
-
-
-
+function validateNewItem(req, res, next) {
+    if (!req.body.name || !req.body.quantity || !req.body.price) {
+        req.body.valid = false;
+        next();
     } else {
-        res.writeHead(404, { 'Content-Type': 'text/plain' });
-        res.end('Not Found');
+        req.body.valid = true;
+        next();
     }
+}
+
+server.post('/groceryitems', validateNewItem, (req, res) => {
+    const body = req.body;
+    if (req.body.valid) {
+        dao.postItem(uuid.v4(), body.name, body.quantity, body.price)
+            .then((data) => {
+                res.send({
+                    message: "Successfully Added Item!"
+                })
+            })
+            .catch((err) => {
+                res.send({
+                    message: "Failed to Add Item!"
+                });
+                console.error(err);
+            })
+    } else {
+        res.send({
+            message: "Invalid Item properties"
+        })
+    }
+})
+server.put('/update', (req, res) => {
+    const body = req.body;
+
+    dao.putItem(body.grocery_item_id, body.newName)
+        .then((data) => {
+            res.send({
+                message: "Successfully updated Item!"
+            })
+        })
+        .catch((err) => {
+            res.send({
+                message: "Failed to update Item!"
+            });
+            console.error(err);
+        })
 
 });
+server.delete('/delete', (req, res) => {
+    const body = req.body;
+    dao.deleteItem(body.grocery_item_id)
+        .then((data) => {
+            res.send({ message: 'item deleted successfully' });
+        })
+        .catch((err) => {
+            res.send({
+                message: 'failed to delete'
+            });
 
+            console.error(err);
+        })
+});
 server.listen(PORT, () => {
-    console.log(`Server is listening on http://localhost:${PORT}`);
+    console.log(`server is listenign on port: ${PORT}`);
 });
+
+
+
+
+module.exports = server;
